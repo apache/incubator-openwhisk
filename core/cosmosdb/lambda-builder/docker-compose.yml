@@ -1,0 +1,24 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more contributor
+# license agreements; and to You under the Apache License, Version 2.0.
+---
+version: '3'
+
+networks:
+  default:
+    external:
+      # Match the network name used by devtool docker compose setup
+      name: openwhisk_default
+
+services:
+  cache-invalidator:
+    image: whisk/lambda-builder-cosmosdb
+    ports:
+      - "8080:8080"
+    environment:
+      - COSMOSDB_ENDPOINT=${COSMOSDB_ENDPOINT}
+      - COSMOSDB_KEY=${COSMOSDB_KEY}
+      - COSMOSDB_NAME=${COSMOSDB_NAME}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - AWS_REGION=${AWS_REGION}

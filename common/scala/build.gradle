@@ -81,6 +81,10 @@ dependencies {
     compile 'io.zipkin.reporter2:zipkin-sender-okhttp3:2.6.1'
     compile 'io.zipkin.reporter2:zipkin-reporter:2.6.1'
 
+    //TODO Review the final dependency set
+    compile 'software.amazon.awssdk:bom:2.3.2'
+    compile 'software.amazon.awssdk:lambda'
+
     compile 'io.reactivex:rxscala_2.12:0.26.5'
     compile 'io.reactivex:rxjava-reactive-streams:1.2.1'
     compile ('com.microsoft.azure:azure-cosmosdb:2.4.2')
