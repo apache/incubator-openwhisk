@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.containerpool.test
 
 import java.time.Instant
-
 import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
 import akka.actor.{ActorRef, ActorSystem, FSM}
 import akka.stream.scaladsl.Source
@@ -26,7 +25,6 @@ import akka.testkit.{ImplicitSender, TestKit}
 import akka.util.ByteString
 import common.{LoggedFunction, StreamLogging, SynchronizedLoggedFunction, WhiskProperties}
 import java.util.concurrent.atomic.AtomicInteger
-
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, Matchers}
@@ -134,6 +132,9 @@ class ContainerProxyTests
   def run(machine: ActorRef, currentState: ContainerState) = {
     machine ! Run(action, message)
     expectMsg(Transition(machine, currentState, Running))
+    if (currentState == Uninitialized) {
+      expectMsg(ContainerStarted)
+    }
     expectWarmed(invocationNamespace.name, action)
     expectMsg(Transition(machine, Running, Ready))
   }
@@ -198,7 +199,8 @@ class ContainerProxyTests
     (transid: TransactionId, activation: WhiskActivation, context: UserContext) =>
       Future.successful(())
   }
-  val poolConfig = ContainerPoolConfig(2.MB, 0.5, false)
+  val poolConfig =
+    ContainerPoolConfig(2.MB, 0.5, false, false, false, 10, 10.seconds)
 
   behavior of "ContainerProxy"
 
@@ -450,6 +452,7 @@ class ContainerProxyTests
 
     machine ! Run(noLogsAction, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
     expectWarmed(invocationNamespace.name, noLogsAction)
     expectMsg(Transition(machine, Running, Ready))
 
@@ -731,6 +734,7 @@ class ContainerProxyTests
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
     expectMsg(ContainerRemoved) // The message is sent as soon as the container decides to destroy itself
     expectMsg(Transition(machine, Running, Removing))
 
@@ -779,6 +783,7 @@ class ContainerProxyTests
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
     expectMsg(ContainerRemoved) // The message is sent as soon as the container decides to destroy itself
     expectMsg(Transition(machine, Running, Removing))
 
@@ -817,6 +822,7 @@ class ContainerProxyTests
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
     expectMsg(ContainerRemoved) // The message is sent as soon as the container decides to destroy itself
     expectMsg(Transition(machine, Running, Removing))
 
@@ -854,6 +860,7 @@ class ContainerProxyTests
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
     expectMsg(ContainerRemoved) // The message is sent as soon as the container decides to destroy itself
     expectMsg(Transition(machine, Running, Removing))
 
@@ -985,6 +992,7 @@ class ContainerProxyTests
     // Start running the action
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
+    expectMsg(ContainerStarted)
 
     // Schedule the container to be removed
     machine ! Remove
@@ -1118,7 +1126,7 @@ class ContainerProxyTests
                       apiKeyMustBePresent: Boolean = true)
       extends Container {
     protected[core] val id = ContainerId("testcontainer")
-    protected val addr = ContainerAddress("0.0.0.0")
+    override protected[core] val addr = ContainerAddress("0.0.0.0")
     protected implicit val logging: Logging = log
     protected implicit val ec: ExecutionContext = system.dispatcher
     override implicit protected val as: ActorSystem = system

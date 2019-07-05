@@ -17,6 +17,7 @@
 
 package org.apache.openwhisk.core.invoker
 
+import akka.actor.ActorRef
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
@@ -37,7 +38,6 @@ import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig._
 import spray.json._
-
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -106,11 +106,10 @@ class InvokerReactive(
           "--pids-limit" -> Set("1024")) ++ logsProvider.containerParameters)
   containerFactory.init()
 
-  CoordinatedShutdown(actorSystem)
-    .addTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, "cleanup runtime containers") { () =>
-      containerFactory.cleanup()
-      Future.successful(Done)
-    }
+  CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, "invokerCleanup") { () =>
+    containerFactory.cleanup()
+    Future.successful(Done)
+  }
 
   /** Initialize needed databases */
   private val entityStore = WhiskEntityStore.datastore()
@@ -206,8 +205,14 @@ class InvokerReactive(
     }.toList
   }
 
+  val resMgrFactory = if (poolConfig.clusterManagedResources) { pool: ActorRef =>
+    new AkkaClusterContainerResourceManager(actorSystem, instance, pool, poolConfig)
+  } else { pool: ActorRef =>
+    new LocalContainerResourceManager(pool)
+  }
   private val pool =
-    actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
+    actorSystem.actorOf(
+      ContainerPool.props(instance, childFactory, poolConfig, activationFeed, resMgrFactory, prewarmingConfigs))
 
   /** Is called when an ActivationMessage is read from Kafka */
   def processActivationMessage(bytes: Array[Byte]): Future[Unit] = {

@@ -350,6 +350,8 @@ object LoggingMarkers {
   private val kafka = "kafka"
   private val loadbalancer = "loadbalancer"
   private val containerClient = "containerClient"
+  private val containerPool = "containerPool"
+  private val clusterResourceManager = "clusterResources"
 
   /*
    * Controller related markers
@@ -390,6 +392,7 @@ object LoggingMarkers {
   def LOADBALANCER_INVOKER_STATUS_CHANGE(state: String) =
     LogMarkerToken(loadbalancer, "invokerState", counter, Some(state), Map("state" -> state))(MeasurementUnit.none)
   val LOADBALANCER_ACTIVATION_START = LogMarkerToken(loadbalancer, "activations", counter)(MeasurementUnit.none)
+  val LOADBALANCER_SYSTEM_ERRORS = LogMarkerToken(loadbalancer, "systemErrors", counter)(MeasurementUnit.none)
 
   def LOADBALANCER_ACTIVATIONS_INFLIGHT(controllerInstance: ControllerInstanceId) = {
     if (TransactionId.metricsKamonTags)
@@ -445,6 +448,37 @@ object LoggingMarkers {
       MeasurementUnit.none)
   val CONTAINER_CLIENT_RETRIES =
     LogMarkerToken(containerClient, "retries", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_RESOURCE_ERROR =
+    LogMarkerToken(containerPool, "resourceError", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_RESCHEDULED_ACTIVATION =
+    LogMarkerToken(containerPool, "rescheduledActivation", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_RUNBUFFER_COUNT =
+    LogMarkerToken(containerPool, "runBufferCount", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_RUNBUFFER_SIZE =
+    LogMarkerToken(containerPool, "runBufferSize", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_ACTIVE_COUNT =
+    LogMarkerToken(containerPool, "activeCount", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_ACTIVE_SIZE =
+    LogMarkerToken(containerPool, "activeSize", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_PREWARM_COUNT =
+    LogMarkerToken(containerPool, "prewarmCount", counter)(MeasurementUnit.none)
+  val CONTAINER_POOL_PREWARM_SIZE =
+    LogMarkerToken(containerPool, "prewarmSize", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_IDLES_COUNT =
+    LogMarkerToken(clusterResourceManager, "idlesCount", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_IDLES_SIZE =
+    LogMarkerToken(clusterResourceManager, "idlesSize", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_RESERVED_COUNT =
+    LogMarkerToken(clusterResourceManager, "reservedCount", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_RESERVED_SIZE =
+    LogMarkerToken(clusterResourceManager, "reservedSize", counter)(MeasurementUnit.none)
+
+  val CLUSTER_RESOURCES_TOTAL_MEM =
+    LogMarkerToken(clusterResourceManager, "totalMemory", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_MAX_MEM =
+    LogMarkerToken(clusterResourceManager, "maxMemory", counter)(MeasurementUnit.none)
+  val CLUSTER_RESOURCES_NODE_COUNT =
+    LogMarkerToken(clusterResourceManager, "nodes", counter)(MeasurementUnit.none)
 
   val INVOKER_TOTALMEM_BLACKBOX = LogMarkerToken(loadbalancer, "totalCapacityBlackBox", counter)(MeasurementUnit.none)
   val INVOKER_TOTALMEM_MANAGED = LogMarkerToken(loadbalancer, "totalCapacityManaged", counter)(MeasurementUnit.none)

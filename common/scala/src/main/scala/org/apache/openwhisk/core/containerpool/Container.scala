@@ -71,7 +71,7 @@ trait Container {
 
   implicit protected val as: ActorSystem
   protected val id: ContainerId
-  protected val addr: ContainerAddress
+  protected[core] val addr: ContainerAddress
   protected implicit val logging: Logging
   protected implicit val ec: ExecutionContext
 
@@ -245,6 +245,9 @@ case class BlackboxStartupError(msg: String) extends ContainerStartupError(msg)
 
 /** Indicates an error while initializing a container */
 case class InitializationError(interval: Interval, response: ActivationResponse) extends Exception(response.toString)
+
+/** Indicates a resource availability error */
+case class ClusterResourceError(required: ByteSize, available: ByteSize) extends ContainerError("inadequate resources")
 
 case class Interval(start: Instant, end: Instant) {
   def duration = Duration.create(end.toEpochMilli() - start.toEpochMilli(), MILLISECONDS)
