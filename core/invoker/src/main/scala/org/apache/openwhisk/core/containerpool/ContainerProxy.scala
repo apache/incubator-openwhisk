@@ -28,7 +28,7 @@ import pureconfig.loadConfigOrThrow
 import scala.collection.immutable
 import spray.json.DefaultJsonProtocol._
 import spray.json._
-import org.apache.openwhisk.common.{AkkaLogging, Counter, LoggingMarkers, TransactionId}
+import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{
   ActivationMessage,
@@ -61,7 +61,10 @@ case object Removing extends ContainerState
 
 // Data
 /** Base data type */
-sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: ByteSize, val activeActivationCount: Int) {
+sealed abstract class ContainerData(val lastUsed: Instant,
+                                    val memoryLimit: ByteSize,
+                                    val cpuThreadsLimit: Float,
+                                    val activeActivationCount: Int) {
 
   /** When ContainerProxy in this state is scheduled, it may result in a new state (ContainerData)*/
   def nextRun(r: Run): ContainerData
@@ -69,7 +72,8 @@ sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: Byte
   /**
    *  Return Some(container) (for ContainerStarted instances) or None(for ContainerNotStarted instances)
    *  Useful for cases where all ContainerData instances are handled, vs cases where only ContainerStarted
-   *  instances are handled */
+   *  instances are handled
+   */
   def getContainer: Option[Container]
 
   /** String to indicate the state of this container after scheduling */
@@ -82,8 +86,9 @@ sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: Byte
 /** abstract type to indicate an unstarted container */
 sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
                                           override val memoryLimit: ByteSize,
+                                          override val cpuThreadsLimit: Float,
                                           override val activeActivationCount: Int)
-    extends ContainerData(lastUsed, memoryLimit, activeActivationCount) {
+    extends ContainerData(lastUsed, memoryLimit, cpuThreadsLimit, activeActivationCount) {
   override def getContainer = None
   override val initingState = "cold"
 }
@@ -92,8 +97,9 @@ sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
 sealed abstract class ContainerStarted(val container: Container,
                                        override val lastUsed: Instant,
                                        override val memoryLimit: ByteSize,
+                                       override val cpuThreadsLimit: Float,
                                        override val activeActivationCount: Int)
-    extends ContainerData(lastUsed, memoryLimit, activeActivationCount) {
+    extends ContainerData(lastUsed, memoryLimit, cpuThreadsLimit, activeActivationCount) {
   override def getContainer = Some(container)
 }
 
@@ -112,14 +118,16 @@ sealed abstract trait ContainerNotInUse {
 
 /** type representing a cold (not running) container */
 case class NoData(override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, 0.B, activeActivationCount)
+    extends ContainerNotStarted(Instant.EPOCH, 0.B, 0.toFloat, activeActivationCount)
     with ContainerNotInUse {
   override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
 }
 
-/** type representing a cold (not running) container with specific memory allocation */
-case class MemoryData(override val memoryLimit: ByteSize, override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, memoryLimit, activeActivationCount)
+/** type representing a cold (not running) container with specific memory/cpu resources allocation */
+case class ResourcesData(override val memoryLimit: ByteSize,
+                         override val cpuThreadsLimit: Float,
+                         override val activeActivationCount: Int = 0)
+    extends ContainerNotStarted(Instant.EPOCH, memoryLimit, cpuThreadsLimit, activeActivationCount)
     with ContainerNotInUse {
   override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
 }
@@ -128,8 +136,9 @@ case class MemoryData(override val memoryLimit: ByteSize, override val activeAct
 case class PreWarmedData(override val container: Container,
                          kind: String,
                          override val memoryLimit: ByteSize,
+                         override val cpuThreadsLimit: Float,
                          override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, Instant.EPOCH, memoryLimit, activeActivationCount)
+    extends ContainerStarted(container, Instant.EPOCH, memoryLimit, cpuThreadsLimit, activeActivationCount)
     with ContainerNotInUse {
   override val initingState = "prewarmed"
   override def nextRun(r: Run) =
@@ -142,7 +151,12 @@ case class WarmingData(override val container: Container,
                        action: ExecutableWhiskAction,
                        override val lastUsed: Instant,
                        override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerStarted(
+      container,
+      lastUsed,
+      action.limits.memory.megabytes.MB,
+      action.limits.cpu.threads,
+      activeActivationCount)
     with ContainerInUse {
   override val initingState = "warming"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -153,7 +167,11 @@ case class WarmingColdData(invocationNamespace: EntityName,
                            action: ExecutableWhiskAction,
                            override val lastUsed: Instant,
                            override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerNotStarted(
+      lastUsed,
+      action.limits.memory.megabytes.MB,
+      action.limits.cpu.threads,
+      activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmingCold"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -165,14 +183,19 @@ case class WarmedData(override val container: Container,
                       action: ExecutableWhiskAction,
                       override val lastUsed: Instant,
                       override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerStarted(
+      container,
+      lastUsed,
+      action.limits.memory.megabytes.MB,
+      action.limits.cpu.threads,
+      activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmed"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
 }
 
 // Events received by the actor
-case class Start(exec: CodeExec[_], memoryLimit: ByteSize)
+case class Start(exec: CodeExec[_], memoryLimit: ByteSize, cpuThreads: Float = CPULimit.STD_CPU)
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
 case object Remove
 
@@ -235,7 +258,8 @@ class ContainerProxy(
   instance: InvokerInstanceId,
   poolConfig: ContainerPoolConfig,
   unusedTimeout: FiniteDuration,
-  pauseGrace: FiniteDuration)
+  pauseGrace: FiniteDuration)(implicit cpuLimitConfig: CPULimitConfig =
+                                loadConfigOrThrow[CPULimitConfig](ConfigKeys.cpu))
     extends FSM[ContainerState, ContainerData]
     with Stash {
   implicit val ec = context.system.dispatcher
@@ -256,9 +280,10 @@ class ContainerProxy(
         job.exec.image,
         job.exec.pull,
         job.memoryLimit,
-        poolConfig.cpuShare(job.memoryLimit),
+        if (!cpuLimitConfig.controlEnabled) poolConfig.cpuShare(job.memoryLimit)
+        else CPULimitUtils.threadsToPermits(job.cpuThreads),
         None)
-        .map(container => PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit)))
+        .map(container => PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, job.cpuThreads)))
         .pipeTo(self)
 
       goto(Starting)
@@ -274,7 +299,8 @@ class ContainerProxy(
         job.action.exec.image,
         job.action.exec.pull,
         job.action.limits.memory.megabytes.MB,
-        poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
+        if (!cpuLimitConfig.controlEnabled) poolConfig.cpuShare(job.action.limits.memory.megabytes.MB)
+        else CPULimitUtils.threadsToPermits(job.action.limits.cpu.threads),
         Some(job.action))
 
       // container factory will either yield a new container ready to execute the action, or
@@ -286,7 +312,13 @@ class ContainerProxy(
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, job.action.limits.memory.megabytes.MB, 1))
+              // If we use memory limit, 1 means the lowest CPU share priority.
+              // If we use CPU limit, we need to send the CPU limit config, so that container pool could calculate it.
+              PreWarmedData(
+                container,
+                job.action.exec.kind,
+                job.action.limits.memory.megabytes.MB,
+                if (!cpuLimitConfig.controlEnabled) 1 else job.action.limits.cpu.threads))
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup
@@ -366,7 +398,7 @@ class ContainerProxy(
     case Event(RunCompleted, data: WarmedData) =>
       activeCount -= 1
 
-      //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
+      //if there are items in runBuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
       if (requestWork(data) || activeCount > 0) {
         stay using data
       } else {
@@ -478,9 +510,9 @@ class ContainerProxy(
 
   initialize()
 
-  /** Either process runbuffer or signal parent to send work; return true if runbuffer is being processed */
+  /** Either process runBuffer or signal parent to send work; return true if runBuffer is being processed */
   def requestWork(newData: WarmedData): Boolean = {
-    //if there is concurrency capacity, process runbuffer, or signal NeedWork
+    //if there is concurrency capacity, process runBuffer, or signal NeedWork
     if (activeCount < newData.action.limits.concurrency.maxConcurrent) {
       runBuffer.dequeueOption match {
         case Some((run, q)) =>
@@ -561,7 +593,7 @@ class ContainerProxy(
 
     // Only initialize iff we haven't yet warmed the container
     val initialize = stateData match {
-      case data: WarmedData =>
+      case _: WarmedData =>
         Future.successful(None)
       case _ =>
         container

@@ -273,7 +273,8 @@ protected[actions] trait PrimitiveActions {
                                 waitForResponse: Option[FiniteDuration],
                                 cause: Option[ActivationId],
                                 accounting: Option[CompositionAccounting] = None)(
-    implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    implicit
+    transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
 
     val session = Session(
       activationId = activationIdFactory.make(),
@@ -316,7 +317,8 @@ protected[actions] trait PrimitiveActions {
    * @param transid a transaction id for logging
    */
   private def invokeConductor(user: Identity, payload: Option[JsObject], session: Session)(
-    implicit transid: TransactionId): Future[ActivationResponse] = {
+    implicit
+    transid: TransactionId): Future[ActivationResponse] = {
 
     if (session.accounting.conductors > 2 * actionSequenceLimit) {
       // composition is too long
@@ -394,7 +396,8 @@ protected[actions] trait PrimitiveActions {
    * @return promise for the eventual activation
    */
   private def tryInvokeNext(user: Identity, fqn: FullyQualifiedEntityName, params: Option[JsObject], session: Session)(
-    implicit transid: TransactionId): Future[ActivationResponse] = {
+    implicit
+    transid: TransactionId): Future[ActivationResponse] = {
     val resource = Resource(fqn.path, Collection(Collection.ACTIONS), Some(fqn.name.asString))
     entitlementProvider
       .check(user, Privilege.ACTIVATE, Set(resource), noThrottle = true)
@@ -439,7 +442,8 @@ protected[actions] trait PrimitiveActions {
    * @param transid a transaction id for logging
    */
   private def invokeComponent(user: Identity, action: WhiskActionMetaData, payload: Option[JsObject], session: Session)(
-    implicit transid: TransactionId): Future[ActivationResponse] = {
+    implicit
+    transid: TransactionId): Future[ActivationResponse] = {
 
     val exec = action.toExecutableWhiskAction
     val activationResponse: Future[Either[ActivationId, WhiskActivation]] = exec match {
@@ -496,7 +500,8 @@ protected[actions] trait PrimitiveActions {
   private def waitForActivation(user: Identity,
                                 session: Session,
                                 activationResponse: Future[Either[ActivationId, WhiskActivation]])(
-    implicit transid: TransactionId): Future[Either[ActivationResponse, WhiskActivation]] = {
+    implicit
+    transid: TransactionId): Future[Either[ActivationResponse, WhiskActivation]] = {
 
     activationResponse
       .map {
@@ -526,14 +531,19 @@ protected[actions] trait PrimitiveActions {
    * Returns the activation.
    */
   private def completeActivation(user: Identity, session: Session, response: ActivationResponse)(
-    implicit transid: TransactionId): WhiskActivation = {
+    implicit
+    transid: TransactionId): WhiskActivation = {
 
     val context = UserContext(user)
 
     // compute max memory
     val sequenceLimits = Parameters(
       WhiskActivation.limitsAnnotation,
-      ActionLimits(session.action.limits.timeout, MemoryLimit(session.maxMemory), session.action.limits.logs).toJson)
+      ActionLimits(
+        session.action.limits.timeout,
+        MemoryLimit(session.maxMemory),
+        session.action.limits.logs,
+        cpu = session.action.limits.cpu).toJson)
 
     // set causedBy if not topmost
     val causedBy = session.cause.map { _ =>
@@ -592,7 +602,8 @@ protected[actions] trait PrimitiveActions {
                                         activationId: ActivationId,
                                         totalWaitTime: FiniteDuration,
                                         activeAckResponse: Future[Either[ActivationId, WhiskActivation]])(
-    implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    implicit
+    transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
     val context = UserContext(user)
     val result = Promise[Either[ActivationId, WhiskActivation]]
     val docid = new DocId(WhiskEntity.qualifiedName(user.namespace.name.toPath, activationId))

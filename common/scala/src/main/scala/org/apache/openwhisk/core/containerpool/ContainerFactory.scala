@@ -107,6 +107,38 @@ trait ContainerFactory {
                       memory: ByteSize,
                       cpuShares: Int)(implicit config: WhiskConfig, logging: Logging): Future[Container]
 
+  /**
+   * Create a new Container, using CPU limit
+   *
+   * The created container has following requirements:
+   * - The container's file system is based on the provided action image, and may have a read/write layer on top.
+   *   Some managed action runtimes may need the capability to write files.
+   * - If the specified image is not available on the system, it is pulled from an image
+   *   repository - for example, Docker Hub.
+   * - The container needs a network setup - usually, a network interface - such that the invoker is able
+   *   to connect the action container. The container must be able to perform DNS resolution based
+   *   on the settings provided via ContainerArgsConfig. If needed by action authors,
+   *   the container should be able to connect to other systems or even the internet to consume services.
+   * - The IP address of said interface is stored in the created Container instance if you want to use
+   *   the standard init / run behaviour defined in the Container trait.
+   * - The default process specified in the action image is run.
+   * - It is desired that all stdout / stderr written by processes in the container is captured such
+   *   that it can be obtained using the logs() method of the Container trait.
+   * - It is desired that the container supports and enforces the specified memory and CPU limit.
+   *   In particular, action memory and CPU limits rely on the underlying container technology.
+   *
+   * @param cpuPermits count in CPU permits, should be transform to CPU threads when creating container
+   */
+  def createCPUContainer(
+    tid: TransactionId,
+    name: String,
+    actionImage: ExecManifest.ImageName,
+    userProvidedImage: Boolean,
+    memory: ByteSize,
+    cpuPermits: Int,
+    action: Option[ExecutableWhiskAction])(implicit config: WhiskConfig, logging: Logging): Future[Container] =
+    Future.failed(new Exception("Method not implemented."))
+
   /** perform any initialization */
   def init(): Unit
 

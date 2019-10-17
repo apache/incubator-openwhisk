@@ -42,9 +42,6 @@ import org.scalatest.tagobjects.Slow
 @RunWith(classOf[JUnitRunner])
 class MaxActionDurationTests extends TestHelpers with WskTestHelpers with WskActorSystem {
 
-  implicit val wskprops = WskProps()
-  val wsk = new WskRestOperations
-
   /**
    * Purpose of the following integration test is to verify that the action proxy
    * supports the configured maximum action time limit and does not interrupt a
@@ -62,9 +59,13 @@ class MaxActionDurationTests extends TestHelpers with WskTestHelpers with WskAct
    * With default settings, this is around 6 minutes.
    */
   "node-, python, and java-action" should s"run up to the max allowed duration (${TimeLimit.MAX_DURATION})" taggedAs (Slow) in withAssetCleaner(
-    wskprops) { (wp, assetHelper) =>
+    WskProps()) { (wskProps, assetHelper) =>
+    implicit val props = wskProps
+
+    val wsk = new WskRestOperations
+
     // When you add more runtimes, keep in mind, how many actions can be processed in parallel by the Invokers!
-    Map("node" -> "helloDeadline.js", "python" -> "sleep.py", "java" -> "sleep.jar").par.map {
+    Map("node" -> "helloDeadline.js", "python" -> "sleep.py", "java" -> "sleep.jar").par.foreach {
       case (k, name) =>
         println(s"Testing action kind '${k}' with action '${name}'")
         assetHelper.withCleaner(wsk.action, name) { (action, _) =>
@@ -92,7 +93,6 @@ class MaxActionDurationTests extends TestHelpers with WskTestHelpers with WskAct
             activation.duration.toInt should be >= TimeLimit.MAX_DURATION.toMillis.toInt
           }
         }
-        () // explicitly map to Unit
     }
   }
 }

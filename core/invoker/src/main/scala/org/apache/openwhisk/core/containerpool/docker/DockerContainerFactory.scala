@@ -22,13 +22,10 @@ import akka.actor.ActorSystem
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import org.apache.openwhisk.common.Logging
-import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.common.{CPULimitUtils, Logging, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.containerpool._
-import org.apache.openwhisk.core.entity.ByteSize
-import org.apache.openwhisk.core.entity.ExecManifest
-import org.apache.openwhisk.core.entity.InvokerInstanceId
+import org.apache.openwhisk.core.entity.{ByteSize, ExecManifest, ExecutableWhiskAction, InvokerInstanceId}
 
 import scala.concurrent.duration._
 import java.util.concurrent.TimeoutException
@@ -38,21 +35,21 @@ import org.apache.openwhisk.core.ConfigKeys
 
 case class DockerContainerFactoryConfig(useRunc: Boolean)
 
-class DockerContainerFactory(instance: InvokerInstanceId,
-                             parameters: Map[String, Set[String]],
-                             containerArgsConfig: ContainerArgsConfig =
-                               loadConfigOrThrow[ContainerArgsConfig](ConfigKeys.containerArgs),
-                             protected val runtimesRegistryConfig: RuntimesRegistryConfig =
-                               loadConfigOrThrow[RuntimesRegistryConfig](ConfigKeys.runtimesRegistry),
-                             protected val userImagesRegistryConfig: RuntimesRegistryConfig =
-                               loadConfigOrThrow[RuntimesRegistryConfig](ConfigKeys.userImagesRegistry),
-                             dockerContainerFactoryConfig: DockerContainerFactoryConfig =
-                               loadConfigOrThrow[DockerContainerFactoryConfig](ConfigKeys.dockerContainerFactory))(
-  implicit actorSystem: ActorSystem,
-  ec: ExecutionContext,
-  logging: Logging,
-  docker: DockerApiWithFileAccess,
-  runc: RuncApi)
+class DockerContainerFactory(
+  instance: InvokerInstanceId,
+  parameters: Map[String, Set[String]],
+  containerArgsConfig: ContainerArgsConfig = loadConfigOrThrow[ContainerArgsConfig](ConfigKeys.containerArgs),
+  protected val runtimesRegistryConfig: RuntimesRegistryConfig =
+    loadConfigOrThrow[RuntimesRegistryConfig](ConfigKeys.runtimesRegistry),
+  protected val userImagesRegistryConfig: RuntimesRegistryConfig =
+    loadConfigOrThrow[RuntimesRegistryConfig](ConfigKeys.userImagesRegistry),
+  dockerContainerFactoryConfig: DockerContainerFactoryConfig =
+    loadConfigOrThrow[DockerContainerFactoryConfig](ConfigKeys.dockerContainerFactory))(implicit
+                                                                                        actorSystem: ActorSystem,
+                                                                                        ec: ExecutionContext,
+                                                                                        logging: Logging,
+                                                                                        docker: DockerApiWithFileAccess,
+                                                                                        runc: RuncApi)
     extends ContainerFactory {
 
   /** Create a container using docker cli */
@@ -64,13 +61,42 @@ class DockerContainerFactory(instance: InvokerInstanceId,
                                cpuShares: Int)(implicit config: WhiskConfig, logging: Logging): Future[Container] = {
     val registryConfig =
       ContainerFactory.resolveRegistryConfig(userProvidedImage, runtimesRegistryConfig, userImagesRegistryConfig)
-    val image = if (userProvidedImage) Left(actionImage) else Right(actionImage)
     DockerContainer.create(
       tid,
-      image = image,
+      image = if (userProvidedImage) Left(actionImage) else Right(actionImage),
       registryConfig = Some(registryConfig),
       memory = memory,
       cpuShares = cpuShares,
+      environment = Map("__OW_API_HOST" -> config.wskApiHost) ++ containerArgsConfig.extraEnvVarMap,
+      network = containerArgsConfig.network,
+      dnsServers = containerArgsConfig.dnsServers,
+      dnsSearch = containerArgsConfig.dnsSearch,
+      dnsOptions = containerArgsConfig.dnsOptions,
+      name = Some(name),
+      useRunc = dockerContainerFactoryConfig.useRunc,
+      parameters ++ containerArgsConfig.extraArgs.map { case (k, v) => ("--" + k, v) })
+  }
+
+  /**
+   * Create a container using docker cli using CPU limit
+   * @param action useless parameter only for the SPI enhancement.
+   */
+  override def createCPUContainer(
+    tid: TransactionId,
+    name: String,
+    actionImage: ExecManifest.ImageName,
+    userProvidedImage: Boolean,
+    memory: ByteSize,
+    cpuPermits: Int,
+    action: Option[ExecutableWhiskAction])(implicit config: WhiskConfig, logging: Logging): Future[Container] = {
+    val registryConfig =
+      ContainerFactory.resolveRegistryConfig(userProvidedImage, runtimesRegistryConfig, userImagesRegistryConfig)
+    DockerContainer.createByCPU(
+      tid,
+      image = if (userProvidedImage) Left(actionImage) else Right(actionImage),
+      registryConfig = Some(registryConfig),
+      memory = memory,
+      cpu = CPULimitUtils.permitsToThreads(cpuPermits),
       environment = Map("__OW_API_HOST" -> config.wskApiHost) ++ containerArgsConfig.extraEnvVarMap,
       network = containerArgsConfig.network,
       dnsServers = containerArgsConfig.dnsServers,

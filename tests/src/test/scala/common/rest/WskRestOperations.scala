@@ -267,6 +267,7 @@ class RestActionOperations(implicit val actorSystem: ActorSystem)
     annotationFile: Option[String] = None,
     timeout: Option[Duration] = None,
     memory: Option[ByteSize] = None,
+    cpu: Option[Float] = None,
     logsize: Option[ByteSize] = None,
     concurrency: Option[Int] = None,
     shared: Option[Boolean] = None,
@@ -344,7 +345,8 @@ class RestActionOperations(implicit val actorSystem: ActorSystem)
       timeout.map(t => Map("timeout" -> t.toMillis.toJson)).getOrElse(Map.empty) ++
         logsize.map(log => Map("logs" -> log.toMB.toJson)).getOrElse(Map.empty) ++
         memory.map(m => Map("memory" -> m.toMB.toJson)).getOrElse(Map.empty) ++
-        concurrency.map(c => Map("concurrency" -> c.toJson)).getOrElse(Map.empty)
+        concurrency.map(c => Map("concurrency" -> c.toJson)).getOrElse(Map.empty) ++
+        cpu.map(c => Map("cpu" -> c.toJson)).getOrElse(Map.empty)
     }
 
     val body: Map[String, JsValue] = if (!update) {
@@ -812,8 +814,8 @@ class RestNamespaceOperations(implicit val actorSystem: ActorSystem) extends Nam
    * @param expectedExitCode (optional) the expected exit code for the command
    * if the code is anything but DONTCARE_EXIT, assert the code is as expected
    */
-  override def list(expectedExitCode: Int = OK.intValue, nameSort: Option[Boolean] = None)(
-    implicit wp: WskProps): RestResult = {
+  override def list(expectedExitCode: Int = OK.intValue, nameSort: Option[Boolean] = None)(implicit
+                                                                                           wp: WskProps): RestResult = {
     val entPath = Path(s"$basePath/namespaces")
     val resp = requestEntity(GET, entPath)
     val result = new RestResult(resp.status, getTransactionId(resp), getRespData(resp))

@@ -238,6 +238,7 @@ trait ActionOperations extends DeleteFromCollectionOperations with ListOrGetFrom
              annotationFile: Option[String] = None,
              timeout: Option[Duration] = None,
              memory: Option[ByteSize] = None,
+             cpu: Option[Float] = None,
              logsize: Option[ByteSize] = None,
              concurrency: Option[Int] = None,
              shared: Option[Boolean] = None,
@@ -320,7 +321,8 @@ trait ActivationOperations {
               pollPeriod: Duration = 1.second)(implicit wp: WskProps): Seq[String]
 
   def waitForActivation(activationId: String, initialWait: Duration, pollPeriod: Duration, totalWait: Duration)(
-    implicit wp: WskProps): Either[String, JsObject]
+    implicit
+    wp: WskProps): Either[String, JsObject]
 
   def get(activationId: Option[String] = None,
           expectedExitCode: Int = SUCCESS_EXIT,
@@ -334,10 +336,12 @@ trait ActivationOperations {
               actionName: Option[String] = None)(implicit wp: WskProps): RunResult
 
   def logs(activationId: Option[String] = None, expectedExitCode: Int = SUCCESS_EXIT, last: Option[Boolean] = None)(
-    implicit wp: WskProps): RunResult
+    implicit
+    wp: WskProps): RunResult
 
   def result(activationId: Option[String] = None, expectedExitCode: Int = SUCCESS_EXIT, last: Option[Boolean] = None)(
-    implicit wp: WskProps): RunResult
+    implicit
+    wp: WskProps): RunResult
 }
 
 trait NamespaceOperations {

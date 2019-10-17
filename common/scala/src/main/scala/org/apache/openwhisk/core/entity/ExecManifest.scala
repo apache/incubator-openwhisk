@@ -132,6 +132,8 @@ protected[core] object ExecManifest {
   /**
    * A stemcell configuration read from the manifest for a container image to be initialized by the container pool.
    *
+   * The CPU limit would use `whisk.cpu.std` config, in order to do as little modifications to current vendors.
+   *
    * @param count  the number of stemcell containers to create
    * @param memory the max memory this stemcell will allocate
    */

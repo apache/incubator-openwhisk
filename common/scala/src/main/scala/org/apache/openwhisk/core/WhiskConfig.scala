@@ -119,8 +119,8 @@ object WhiskConfig {
    * Reads a Map of key-value pairs from the environment (sys.env) -- store them in the
    * mutable properties object.
    */
-  def readPropertiesFromFile(properties: scala.collection.mutable.Map[String, String], file: File)(
-    implicit logging: Logging) = {
+  def readPropertiesFromFile(properties: scala.collection.mutable.Map[String, String], file: File)(implicit
+                                                                                                   logging: Logging) = {
     if (file != null && file.exists) {
       logging.info(this, s"reading properties from file $file")
       val source = Source.fromFile(file)
@@ -206,6 +206,7 @@ object ConfigKeys {
   val kafkaTopics = s"$kafka.topics"
 
   val memory = "whisk.memory"
+  val cpu = "whisk.cpu"
   val timeLimit = "whisk.time-limit"
   val logLimit = "whisk.log-limit"
   val concurrencyLimit = "whisk.concurrency-limit"

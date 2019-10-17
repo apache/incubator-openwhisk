@@ -212,9 +212,13 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
 
         onComplete(checkAdditionalPrivileges) {
           case Success(_) =>
-            putEntity(WhiskAction, entityStore, entityName.toDocId, overwrite, update(user, request) _, () => {
-              make(user, entityName, request)
-            })
+            putEntity(
+              WhiskAction,
+              entityStore,
+              entityName.toDocId,
+              overwrite,
+              update(user, request) _,
+              make(user, entityName, request))
           case Failure(f) =>
             super.handleEntitlementFailure(f)
         }
@@ -234,7 +238,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    * - 500 Internal Server Error
    */
   override def activate(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
-    implicit transid: TransactionId) = {
+    implicit
+    transid: TransactionId) = {
     parameter(
       'blocking ? false,
       'result ? false,
@@ -339,7 +344,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    * - 500 Internal Server Error
    */
   override def fetch(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
-    implicit transid: TransactionId) = {
+    implicit
+    transid: TransactionId) = {
     parameter('code ? true) { code =>
       code match {
         case true =>
@@ -408,15 +414,16 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
   /**
    * Creates a WhiskAction instance from the PUT request.
    */
-  private def makeWhiskAction(content: WhiskActionPut, entityName: FullyQualifiedEntityName)(
-    implicit transid: TransactionId) = {
+  private def makeWhiskAction(content: WhiskActionPut, entityName: FullyQualifiedEntityName)(implicit
+                                                                                             transid: TransactionId) = {
     val exec = content.exec.get
     val limits = content.limits map { l =>
       ActionLimits(
         l.timeout getOrElse TimeLimit(),
         l.memory getOrElse MemoryLimit(),
         l.logs getOrElse LogLimit(),
-        l.concurrency getOrElse ConcurrencyLimit())
+        l.concurrency getOrElse ConcurrencyLimit(),
+        l.cpu getOrElse CPULimit())
     } getOrElse ActionLimits()
     // This is temporary while we are making sequencing directly supported in the controller.
     // The parameter override allows this to work with Pipecode.code. Any parameters other
@@ -442,7 +449,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
 
   /** For a sequence action, gather referenced entities and authorize access. */
   private def entitleReferencedEntities(user: Identity, right: Privilege, exec: Option[Exec])(
-    implicit transid: TransactionId) = {
+    implicit
+    transid: TransactionId) = {
     exec match {
       case Some(seq: SequenceExec) =>
         logging.debug(this, "checking if sequence components are accessible")
@@ -452,7 +460,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
   }
 
   private def entitleReferencedEntitiesMetaData(user: Identity, right: Privilege, exec: Option[ExecMetaDataBase])(
-    implicit transid: TransactionId) = {
+    implicit
+    transid: TransactionId) = {
     exec match {
       case Some(seq: SequenceExecMetaData) =>
         logging.info(this, "checking if sequence components are accessible")
@@ -463,7 +472,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
 
   /** Creates a WhiskAction from PUT content, generating default values where necessary. */
   private def make(user: Identity, entityName: FullyQualifiedEntityName, content: WhiskActionPut)(
-    implicit transid: TransactionId) = {
+    implicit
+    transid: TransactionId) = {
     content.exec map {
       case seq: SequenceExec =>
         // check that the sequence conforms to max length and no recursion rules
@@ -508,7 +518,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
         l.timeout getOrElse action.limits.timeout,
         l.memory getOrElse action.limits.memory,
         l.logs getOrElse action.limits.logs,
-        l.concurrency getOrElse action.limits.concurrency)
+        l.concurrency getOrElse action.limits.concurrency,
+        l.cpu getOrElse action.limits.cpu)
     } getOrElse action.limits
 
     // This is temporary while we are making sequencing directly supported in the controller.

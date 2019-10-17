@@ -23,37 +23,36 @@ import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
 
 @RunWith(classOf[JUnitRunner])
-class NestedSemaphoreTests extends FlatSpec with Matchers {
-  behavior of "NestedSemaphore"
+class NestedCPUSemaphoreTests extends FlatSpec with Matchers {
+  behavior of "NestedCPUSemaphoreTests"
 
-  it should "allow acquire of concurrency permits before acquire of memory permits" in {
-    val s = new NestedSemaphore[String](20)
-    s.availablePermits shouldBe 20
+  it should "allow acquire of concurrency permits before acquire of CPU permits" in {
+    val s = new NestedCPUSemaphore[String](1.toFloat)
+    s.availablePermits shouldBe 100 // We only accept this unit currently
 
     val actionId = "action1"
     val actionConcurrency = 5
-    val actionMemory = 3
+    val actionCPU = CPULimitUtils.threadsToPermits(0.06)
     //use all concurrency on a single slot
-    (1 to 5).par.map { i =>
-      s.tryAcquireConcurrent(actionId, actionConcurrency, actionMemory) shouldBe true
+    (1 to 5).par.map { _ =>
+      s.tryAcquireConcurrent(actionId, actionConcurrency, actionCPU) shouldBe true
     }
-    s.availablePermits shouldBe 20 - 3 //we used a single container (memory == 3)
+    s.availablePermits shouldBe 100 - 6 //we used a single container (CPU permits == 6)
     s.concurrentState(actionId).availablePermits shouldBe 0
 
-    //use up all the remaining memory (17) and concurrency slots (17 / 3 * 5 = 25)
-    (1 to 25).par.map { i =>
-      s.tryAcquireConcurrent(actionId, actionConcurrency, actionMemory) shouldBe true
+    //use up all the remaining CPU permits (94) and concurrency slots (94 / 6 * 5 = 75)
+    (1 to 75).par.map { _ =>
+      s.tryAcquireConcurrent(actionId, actionConcurrency, actionCPU) shouldBe true
     }
-    s.availablePermits shouldBe 2 //we used 18 (20/3 = 6, 6*3=18)
+    s.availablePermits shouldBe 4 //we used 96 (100/6 = 16, 16*6 = 96)
     s.concurrentState(actionId).availablePermits shouldBe 0
-    s.tryAcquireConcurrent("action1", actionConcurrency, actionMemory) shouldBe false
-
+    s.tryAcquireConcurrent("action1", actionConcurrency, actionCPU) shouldBe false
   }
 
   it should "not give away more permits even under concurrent load" in {
     // 100 iterations of this test
     (0 until 100).foreach { _ =>
-      val s = new NestedSemaphore(32)
+      val s = new NestedCPUSemaphore((0.32).toFloat)
       // try to acquire more permits than allowed in parallel
       val acquires = (0 until 64).par.map(_ => s.tryAcquire()).seq
 

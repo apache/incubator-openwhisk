@@ -21,7 +21,7 @@ import akka.actor.ActorRef
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.LongAdder
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Cancellable}
 import akka.event.Logging.InfoLevel
 import akka.stream.ActorMaterializer
 import org.apache.kafka.clients.producer.RecordMetadata
@@ -43,7 +43,8 @@ import scala.util.{Failure, Success}
  */
 abstract class CommonLoadBalancer(config: WhiskConfig,
                                   feedFactory: FeedFactory,
-                                  controllerInstance: ControllerInstanceId)(implicit val actorSystem: ActorSystem,
+                                  controllerInstance: ControllerInstanceId)(implicit
+                                                                            val actorSystem: ActorSystem,
                                                                             logging: Logging,
                                                                             materializer: ActorMaterializer,
                                                                             messagingProvider: MessagingProvider)
@@ -51,8 +52,9 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
 
   protected implicit val executionContext: ExecutionContext = actorSystem.dispatcher
 
-  val lbConfig: ShardingContainerPoolBalancerConfig =
-    loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
+  val lbConfig: ContainerPoolBalancerConfig =
+    loadConfigOrThrow[ContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
+  val cpuLimitConfig: CPULimitConfig = loadConfigOrThrow[CPULimitConfig](ConfigKeys.cpu)
   protected val invokerPool: ActorRef
 
   /** State related to invocations and throttling */
@@ -119,9 +121,6 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     // Needed for emitting metrics.
     totalActivations.increment()
     val isBlackboxInvocation = action.exec.pull
-    val totalActivationMemory =
-      if (isBlackboxInvocation) totalBlackBoxActivationMemory else totalManagedActivationMemory
-    totalActivationMemory.add(action.limits.memory.megabytes)
 
     activationsPerNamespace.getOrElseUpdate(msg.user.namespace.uuid, new LongAdder()).increment()
 
@@ -155,6 +154,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
           msg.activationId,
           msg.user.namespace.uuid,
           instance,
+          action.limits.cpu.threads,
           action.limits.memory.megabytes.MB,
           action.limits.timeout.duration,
           action.limits.concurrency.maxConcurrent,
@@ -277,9 +277,6 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     activationSlots.remove(aid) match {
       case Some(entry) =>
         totalActivations.decrement()
-        val totalActivationMemory =
-          if (entry.isBlackbox) totalBlackBoxActivationMemory else totalManagedActivationMemory
-        totalActivationMemory.add(entry.memoryLimit.toMB * (-1))
         activationsPerNamespace.get(entry.namespaceId).foreach(_.decrement())
 
         releaseInvoker(invoker, entry)
@@ -304,8 +301,11 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
           val completionAckTimeout = calculateCompletionAckTimeout(entry.timeLimit)
           logging.warn(
             this,
-            s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, mem limit ${entry.memoryLimit.toMB} MB, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $invoker")(
-            tid)
+            if (cpuLimitConfig.controlEnabled) {
+              s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, cpu limit ${entry.cpuLimit} cpuThreads, mem limit ${entry.memoryLimit.toMB} MB, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $invoker"
+            } else {
+              s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, mem limit ${entry.memoryLimit.toMB} MB, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $invoker"
+            })(tid)
 
           MetricEmitter.emitCounterMetric(LOADBALANCER_COMPLETION_ACK_FORCED)
         }
@@ -344,3 +344,38 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     }
   }
 }
+
+/**
+ * Configuration for the container pool balancer.
+ *
+ * @param blackboxFraction the fraction of all invokers to use exclusively for blackboxes
+ * @param timeoutFactor factor to influence the timeout period for forced active acks (time-limit.std * timeoutFactor + 1m)
+ */
+case class ContainerPoolBalancerConfig(managedFraction: Double, blackboxFraction: Double, timeoutFactor: Int)
+
+/**
+ * State kept for each activation slot until completion.
+ *
+ * @param id id of the activation
+ * @param namespaceId namespace that invoked the action
+ * @param invokerName invoker the action is scheduled to
+ * @param cpuLimit CPU limit of the invoked action
+ * @param memoryLimit memory limit of the invoked action
+ * @param timeLimit time limit of the invoked action
+ * @param maxConcurrent concurrency limit of the invoked action
+ * @param fullyQualifiedEntityName fully qualified name of the invoked action
+ * @param timeoutHandler times out completion of this activation, should be canceled on good paths
+ * @param isBlackbox true if the invoked action is a blackbox action, otherwise false (managed action)
+ * @param isBlocking true if the action is invoked in a blocking fashion, i.e. "somebody" waits for the result
+ */
+case class ActivationEntry(id: ActivationId,
+                           namespaceId: UUID,
+                           invokerName: InvokerInstanceId,
+                           cpuLimit: Float,
+                           memoryLimit: ByteSize,
+                           timeLimit: FiniteDuration,
+                           maxConcurrent: Int,
+                           fullyQualifiedEntityName: FullyQualifiedEntityName,
+                           timeoutHandler: Cancellable,
+                           isBlackbox: Boolean,
+                           isBlocking: Boolean)

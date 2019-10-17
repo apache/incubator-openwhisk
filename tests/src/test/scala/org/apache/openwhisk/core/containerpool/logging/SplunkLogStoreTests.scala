@@ -97,7 +97,9 @@ class SplunkLogStoreTests
     start = ZonedDateTime.parse(startTime).toInstant,
     end = ZonedDateTime.parse(endTime).toInstant,
     response = ActivationResponse.success(Some(JsObject("res" -> JsNumber(1)))),
-    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson),
+    annotations = Parameters(
+      "limits",
+      ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB), cpu = CPULimit(0.1)).toJson),
     duration = Some(123))
 
   val context = UserContext(user, request)
@@ -178,5 +180,4 @@ class SplunkLogStoreTests
     val splunkStore = new SplunkLogStore(system, Some(failFlow), testConfig)
     a[RuntimeException] should be thrownBy await(splunkStore.fetchLogs(activation, context))
   }
-
 }

@@ -26,12 +26,17 @@ import org.apache.openwhisk.core.entity.ControllerInstanceId.MAX_NAME_LENGTH
  *
  * @param instance a numeric value used for the load balancing and Kafka topic creation
  * @param uniqueName an identifier required for dynamic instance assignment by Zookeeper
- * @param displayedName an identifier that is required for the health protocol to correlate Kafka topics with invoker container names
+ * @param displayedName an identifier required for the health protocol to correlate Kafka topics with invoker container names
+ * @param userMemory an ByteSize value for user container pool memory limit. It would grep more CPU when you require
+ *                   more userMemory, iff we not enable cpu limit.
+ * @param cpuThreads a numeric value used for reporting the invoker instance's CPU (logical) threads. Default
+ *                        is `1.0`.
  */
 case class InvokerInstanceId(val instance: Int,
                              uniqueName: Option[String] = None,
                              displayedName: Option[String] = None,
-                             val userMemory: ByteSize) {
+                             val userMemory: ByteSize,
+                             val cpuThreads: Float = CPULimit.MAX_CPU) {
   def toInt: Int = instance
 
   override def toString: String = (Seq("invoker" + instance) ++ uniqueName ++ displayedName).mkString("/")
@@ -45,7 +50,7 @@ case class ControllerInstanceId(val asString: String) {
 
 object InvokerInstanceId extends DefaultJsonProtocol {
   import org.apache.openwhisk.core.entity.size.{serdes => xserds}
-  implicit val serdes = jsonFormat4(InvokerInstanceId.apply)
+  implicit val serdes = jsonFormat5(InvokerInstanceId.apply)
 }
 
 object ControllerInstanceId extends DefaultJsonProtocol {
