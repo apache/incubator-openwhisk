@@ -15,29 +15,30 @@
  * limitations under the License.
  */
 
-package org.apache.openwhisk.http
+apply plugin: 'scala'
+apply plugin: 'application'
+apply plugin: 'eclipse'
+apply plugin: 'maven'
+apply plugin: 'org.scoverage'
 
-import akka.event.Logging
-import akka.http.scaladsl.server.Route
-import org.apache.openwhisk.common.{MetricsRoute, TransactionId}
+ext.dockerImageName = 'persister'
+apply from: "../../gradle/docker.gradle"
+distDocker.dependsOn ':common:scala:distDocker', 'distTar'
 
-/**
- * This trait extends the BasicHttpService with a standard "ping" endpoint which
- * responds to health queries, intended for monitoring.
- */
-trait BasicRasService extends BasicHttpService {
+project.archivesBaseName = "openwhisk-persister"
 
-  override def routes(implicit transid: TransactionId) = ping ~ MetricsRoute()
-
-  override def loglevelForRoute(route: String): Logging.LogLevel = {
-    if (route == "/ping" || route == "/metrics") {
-      Logging.DebugLevel
-    } else {
-      super.loglevelForRoute(route)
-    }
-  }
-
-  val ping: Route = path("ping") {
-    get { complete("pong") }
-  }
+repositories {
+    mavenCentral()
 }
+
+dependencies {
+    compile "org.scala-lang:scala-library:${gradle.scala.version}"
+    compile project(':common:scala')
+    compile "com.typesafe.akka:akka-stream-kafka_2.12:${gradle.akka_kafka.version}"
+}
+
+tasks.withType(ScalaCompile) {
+    scalaCompileOptions.additionalParameters = gradle.scala.compileFlags
+}
+
+mainClassName = "org.apache.openwhisk.core.database.persister.Main"
