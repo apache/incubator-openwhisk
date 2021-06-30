@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+const Promise = require('bluebird');
+
 let counter = 0;
 let requestCount = undefined;
 let interval = 100;
@@ -31,6 +33,10 @@ function main(args) {
             setTimeout(function() {
                 checkRequests(args, resolve, reject);
             }, interval);
+        }).finally(() => {
+            // Before leaving the container, decrement the counter again. But wait twice the interval, before decrementing it. Otherwise, the
+            // other requests might not realise, that all requests were inside the container.
+            setTimeout(() => counter--, 2 * interval);
         });
     }
 
